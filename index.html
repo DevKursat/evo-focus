@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVO-FOCUS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="timer-container">
+        <div class="progress-ring">
+            <svg class="progress-ring__svg">
+                <circle class="progress-ring__circle-bg" stroke-width="4" fill="transparent" r="140" cx="150" cy="150"/>
+                <circle class="progress-ring__circle" stroke-width="4" fill="transparent" r="140" cx="150" cy="150"/>
+            </svg>
+        </div>
+        <div class="timer">
+            <div id="status-message">Odaklanma Başladı!</div>
+            <div id="time-display">25:00</div>
+            <div class="controls">
+                <button id="start-pause-btn">Başlat</button>
+                <button id="reset-btn">Sıfırla</button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
