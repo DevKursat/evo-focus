@@ -1,0 +1,3 @@
+NEXT_PUBLIC_SUPABASE_URL=https://cpjgzvdoxmuywizlecqo.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_tCSYVnh_KFYQSep_td_Yig_vPZqH9va
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_cf8tD2PfpIvnW_Oropfasw_4XlBuRsF

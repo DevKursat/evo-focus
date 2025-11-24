@@ -1,0 +1,40 @@
+name: Health Check Cron
+
+on:
+  schedule:
+    # Runs every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  health-check:
+    name: Check VERAQR Health
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Call Health Endpoint
+        run: |
+          echo "🏥 Checking VERAQR health..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" ${{ secrets.APP_URL }}/api/health)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          echo "📊 HTTP Status: $HTTP_CODE"
+          echo "📝 Response: $BODY"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Health check passed!"
+            echo "$BODY" | jq '.'
+          else
+            echo "❌ Health check failed!"
+            echo "$BODY" | jq '.'
+            exit 1
+          fi
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "🚨 VERAQR Health Check Failed!"
+          echo "Timestamp: $(date -u)"
+          # Add notification logic here (Slack, Discord, Email, etc.)
