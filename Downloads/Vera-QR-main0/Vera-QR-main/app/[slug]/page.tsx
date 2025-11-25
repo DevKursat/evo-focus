@@ -1,45 +1,49 @@
 import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import RestaurantMenu from '@/components/customer/restaurant-menu'
-import type { Metadata } from 'next'
+import { Metadata } from 'next'
 
 interface Props {
   params: { slug: string }
-  searchParams: { table?: string; qr?: string }
+  searchParams: { qr?: string, t?: string }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = createClient()
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   const { data: restaurant } = await supabase
     .from('restaurants')
-    .select('name, description')
+    .select('name, description, logo_url')
     .eq('slug', params.slug)
-    .eq('status', 'active')
-    .maybeSingle()
+    .single()
 
-  if (!restaurant) {
-    return {
-      title: 'Restoran Bulunamadı',
-    }
-  }
+  if (!restaurant) return { title: 'Restoran Bulunamadı' }
 
   return {
     title: `${restaurant.name} - Dijital Menü`,
-    description: restaurant.description || `${restaurant.name} menüsünü görüntüleyin`,
+    description: restaurant.description,
+    icons: {
+      icon: restaurant.logo_url || '/favicon.ico'
+    }
   }
 }
 
 export default async function RestaurantPage({ params, searchParams }: Props) {
-  const supabase = createClient()
-  // Fetch restaurant
-  const { data: restaurant, error: restaurantError } = await supabase
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: restaurant } = await supabase
     .from('restaurants')
     .select('*')
     .eq('slug', params.slug)
-    .eq('status', 'active')
-    .maybeSingle()
+    .single()
 
-  if (restaurantError || !restaurant) {
+  if (!restaurant) {
     notFound()
   }
 
@@ -77,21 +81,23 @@ export default async function RestaurantPage({ params, searchParams }: Props) {
 
   // Get QR code info if provided
   let qrCodeInfo = null
-  if (searchParams.qr) {
+  const qrHash = searchParams.qr || searchParams.t // Support both 'qr' and 't' params
+
+  if (qrHash) {
     const { data: qrCode } = await supabase
       .from('qr_codes')
       .select('*')
-      .eq('qr_code_hash', searchParams.qr)
+      .eq('qr_code_hash', qrHash)
       .eq('restaurant_id', restaurant.id)
       .maybeSingle()
 
     qrCodeInfo = qrCode
-    
+
     // Update scan count
     if (qrCode) {
       await supabase
         .from('qr_codes')
-        .update({ 
+        .update({
           scan_count: (qrCode.scan_count || 0) + 1,
           last_scanned_at: new Date().toISOString()
         })

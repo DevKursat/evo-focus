@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         total_amount: totalAmount,
         status: 'pending',
         customer_name: customer_name || null,
-        customer_notes: customer_notes || null,
+        notes: customer_notes || null,  // Changed from customer_notes to notes
         session_id: sessionId,
         payment_status: 'unpaid'
       })

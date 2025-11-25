@@ -24,9 +24,7 @@ export default function SlugInput({ value, onChange, currentId, label = "URL Slu
 
   // Sync internal state with prop value if it changes externally
   useEffect(() => {
-    if (value !== inputValue) {
-       setInputValue(value)
-    }
+    setInputValue(value)
   }, [value])
 
   const checkAvailability = async () => {
@@ -79,36 +77,35 @@ export default function SlugInput({ value, onChange, currentId, label = "URL Slu
       <Label htmlFor="slug-input">{label} *</Label>
       <div className="flex items-end gap-2">
         <div className="relative flex-1">
-            <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500 whitespace-nowrap">veraqr.com/</span>
-                <Input
-                    id="slug-input"
-                    value={inputValue}
-                    onChange={handleChange}
-                    placeholder="ornek-restoran"
-                    className={`pr-10 ${
-                        isValid === true ? 'border-green-500 focus-visible:ring-green-500' :
-                        isValid === false ? 'border-red-500 focus-visible:ring-red-500' : ''
-                    }`}
-                    disabled={disabled}
-                />
-            </div>
-            <div className="absolute right-3 top-2.5">
-                {isValid === true ? (
-                    <Check className="h-5 w-5 text-green-500" />
-                ) : isValid === false ? (
-                    <X className="h-5 w-5 text-red-500" />
-                ) : null}
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-500 whitespace-nowrap">veraqr.com/</span>
+            <Input
+              id="slug-input"
+              value={inputValue}
+              onChange={handleChange}
+              placeholder="ornek-restoran"
+              className={`pr-10 ${isValid === true ? 'border-green-500 focus-visible:ring-green-500' :
+                  isValid === false ? 'border-red-500 focus-visible:ring-red-500' : ''
+                }`}
+              disabled={disabled}
+            />
+          </div>
+          <div className="absolute right-3 top-2.5">
+            {isValid === true ? (
+              <Check className="h-5 w-5 text-green-500" />
+            ) : isValid === false ? (
+              <X className="h-5 w-5 text-red-500" />
+            ) : null}
+          </div>
         </div>
         <Button
-            type="button"
-            variant="outline"
-            onClick={checkAvailability}
-            disabled={disabled || isLoading || !inputValue}
+          type="button"
+          variant="outline"
+          onClick={checkAvailability}
+          disabled={disabled || isLoading || !inputValue}
         >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-            Kontrol Et
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+          Kontrol Et
         </Button>
       </div>
       {errorMessage && (

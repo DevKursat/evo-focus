@@ -23,9 +23,10 @@ interface Props {
   restaurantId: string
   categories: Category[]
   item?: any
+  initialCategoryId?: string
 }
 
-export default function MenuItemForm({ restaurantId, categories, item }: Props) {
+export default function MenuItemForm({ restaurantId, categories, item, initialCategoryId }: Props) {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -34,7 +35,7 @@ export default function MenuItemForm({ restaurantId, categories, item }: Props) 
   const [imagePreview, setImagePreview] = useState<string | null>(item?.image_url || null)
 
   const [formData, setFormData] = useState({
-    category_id: item?.category_id || categories[0]?.id || '',
+    category_id: item?.category_id || initialCategoryId || categories[0]?.id || '',
     name: item?.name_tr || '',
     description: item?.description_tr || '',
     price: item?.price || '',
@@ -91,6 +92,7 @@ export default function MenuItemForm({ restaurantId, categories, item }: Props) 
         price: parseFloat(formData.price as string),
         is_available: formData.available,
         stock_count: formData.stock_count ? parseInt(formData.stock_count as string) : null,
+        display_order: item?.display_order || 0,
         allergens: formData.allergens
           ? formData.allergens.split(',').map((a: string) => a.trim()).filter(Boolean)
           : [],

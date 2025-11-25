@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import MenuItemForm from '@/components/restaurant/menu-item-form'
 
-export default async function NewMenuItemPage() {
+export default async function NewMenuItemPage({ searchParams }: { searchParams: { category?: string } }) {
   const supabase = createClient()
   const adminInfo = await getRestaurantAdminInfo()
 
@@ -37,6 +37,7 @@ export default async function NewMenuItemPage() {
       <MenuItemForm
         restaurantId={adminInfo!.restaurant_id}
         categories={formattedCategories}
+        initialCategoryId={searchParams.category}
       />
     </div>
   )

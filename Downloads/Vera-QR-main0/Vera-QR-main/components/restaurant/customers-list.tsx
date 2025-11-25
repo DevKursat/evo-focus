@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -39,11 +39,7 @@ export default function CustomersList({ restaurantId }: Props) {
   const [searchTerm, setSearchTerm] = useState('')
   const { t } = useApp()
 
-  useEffect(() => {
-    fetchCustomers()
-  }, [restaurantId])
-
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('loyalty_points')
@@ -59,7 +55,11 @@ export default function CustomersList({ restaurantId }: Props) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [restaurantId])
+
+  useEffect(() => {
+    fetchCustomers()
+  }, [fetchCustomers])
 
   const filteredCustomers = customers.filter(
     (customer) =>
@@ -145,9 +145,9 @@ export default function CustomersList({ restaurantId }: Props) {
                         <Clock className="h-4 w-4" />
                         {customer.last_transaction_at
                           ? formatDistanceToNow(new Date(customer.last_transaction_at), {
-                              addSuffix: true,
-                              locale: tr,
-                            })
+                            addSuffix: true,
+                            locale: tr,
+                          })
                           : 'Henüz işlem yok'}
                       </div>
                     </TableCell>

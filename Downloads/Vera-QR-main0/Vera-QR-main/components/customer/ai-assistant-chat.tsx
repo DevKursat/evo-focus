@@ -157,7 +157,7 @@ export default function AIAssistantChat({ organization, sessionId, onClose, onAd
                 <div className="relative w-16 h-16 rounded-md overflow-hidden shrink-0">
                   <Image
                     src={recommendedProduct.image_url}
-                    alt={recommendedProduct.name_tr}
+                    alt={recommendedProduct.name_tr || recommendedProduct.name}
                     fill
                     className="object-cover"
                   />

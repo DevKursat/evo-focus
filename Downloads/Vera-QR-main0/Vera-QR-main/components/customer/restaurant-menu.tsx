@@ -132,6 +132,86 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
     return false
   })
 
+  // Waiter call state
+  const [showWaiterCallDialog, setShowWaiterCallDialog] = useState(false)
+  const [waiterCallName, setWaiterCallName] = useState('')
+  const [activeCall, setActiveCall] = useState<{ id: string, status: string } | null>(null)
+  const { toast } = useToast()
+
+  // Load active call from local storage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedCall = localStorage.getItem('activeWaiterCall')
+      if (savedCall) {
+        try {
+          const parsed = JSON.parse(savedCall)
+          // Only restore if created less than 2 hours ago
+          const created = new Date(parsed.timestamp).getTime()
+          const now = new Date().getTime()
+          if (now - created < 2 * 60 * 60 * 1000) {
+            setActiveCall(parsed.data)
+          } else {
+            localStorage.removeItem('activeWaiterCall')
+          }
+        } catch (e) {
+          localStorage.removeItem('activeWaiterCall')
+        }
+      }
+    }
+  }, [])
+
+  // Real-time waiter call tracking
+  useEffect(() => {
+    if (!activeCall) return
+
+    const channel = supabase
+      .channel(`waiter-call-${activeCall.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'waiter_calls',
+          filter: `id=eq.${activeCall.id}`
+        },
+        (payload) => {
+          console.log('Call status updated:', payload.new)
+          const newStatus = payload.new.status
+
+          setActiveCall(prev => prev ? { ...prev, status: newStatus } : null)
+
+          // Update local storage
+          if (newStatus === 'completed' || newStatus === 'cancelled') {
+            localStorage.removeItem('activeWaiterCall')
+            setActiveCall(null)
+            toast({
+              title: 'Çağrı Tamamlandı',
+              description: 'İşlem tamamlandı.',
+            })
+          } else {
+            // Update status in local storage
+            localStorage.setItem('activeWaiterCall', JSON.stringify({
+              data: { id: activeCall.id, status: newStatus },
+              timestamp: new Date().toISOString()
+            }))
+
+            if (newStatus === 'acknowledged') {
+              toast({
+                title: 'Garson Geliyor! 🏃‍♂️',
+                description: 'Çağrınız kabul edildi, garsonunuz yolda.',
+                className: 'bg-green-500 text-white border-none'
+              })
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [activeCall?.id])
+
   // Toggle dark mode
   useEffect(() => {
     if (isDarkMode) {
@@ -142,7 +222,99 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
       localStorage.setItem('theme', 'light')
     }
   }, [isDarkMode])
-  const { toast } = useToast()
+
+  // Handle waiter call
+  const handleWaiterCall = async () => {
+    if (!waiterCallName.trim()) {
+      toast({
+        title: 'İsim Gerekli',
+        description: 'Lütfen isminizi giriniz.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const requestData = {
+      organization_id: organization.id,
+      qr_code_id: tableInfo?.id || null,
+      call_type: 'service',
+      customer_name: waiterCallName,
+    }
+
+    try {
+      console.log('=== GARSON ÇAĞIR - BAŞLANGIÇ ===')
+      console.log('Request Data:', JSON.stringify(requestData, null, 2))
+
+      const response = await fetch('/api/waiter-calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData),
+      })
+
+      console.log('Response Status:', response.status)
+      console.log('Response OK:', response.ok)
+
+      let result
+      try {
+        result = await response.json()
+        console.log('Response Data:', JSON.stringify(result, null, 2))
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError)
+        // result is undefined here, handled in else block
+      }
+
+      if (response.ok) {
+        console.log('✅ SUCCESS - Waiter call created')
+        const data = result.data || result // Handle both {data: ...} and direct object
+
+        if (data && data.id) {
+          const newCall = { id: data.id, status: 'pending' }
+          setActiveCall(newCall)
+          localStorage.setItem('activeWaiterCall', JSON.stringify({
+            data: newCall,
+            timestamp: new Date().toISOString()
+          }))
+        }
+
+        setShowWaiterCallDialog(false)
+        setWaiterCallName('')
+        toast({
+          title: 'Garson Çağrıldı! ✅',
+          description: 'Garsonunuz en kısa sürede gelecektir.',
+        })
+      } else {
+        console.error('❌ FAILED - Status:', response.status)
+        console.error('Error Details:', result)
+
+        let errorMessage = 'Çağrı gönderilemedi'
+        if (result.error) {
+          errorMessage = result.error
+        }
+        if (result.details) {
+          console.error('Database Error Details:', result.details)
+          errorMessage += ` (${result.details.code || 'DB_ERROR'})`
+        }
+
+        toast({
+          title: 'Hata (v3) ❌',
+          description: errorMessage,
+          variant: 'destructive',
+        })
+      }
+    } catch (error: any) {
+      console.error('=== NETWORK/CATCH ERROR ===')
+      console.error('Error Type:', error.name)
+      console.error('Error Message:', error.message)
+      console.error('Error Stack:', error.stack)
+
+      toast({
+        title: 'Bağlantı Hatası (v3)',
+        description: error.message || 'Sunucuya bağlanılamadı. Lütfen tekrar deneyin.',
+        variant: 'destructive',
+      })
+    }
+  }
+
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
@@ -393,6 +565,9 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
       setShowCart(false)
       setCustomerName('')
       setCustomerNotes('')
+
+      // Redirect to order tracking page
+      window.location.href = `/order-tracking/${data.order.id}`
     } catch (error) {
       console.error('Order error:', error)
       toast({
@@ -626,6 +801,7 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
                   size="icon"
                   onClick={async () => {
                     try {
+                      console.log('Sending waiter call...')
                       const response = await fetch('/api/waiter-calls', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -633,15 +809,28 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
                           organization_id: organization.id,
                           qr_code_id: tableInfo.id,
                           call_type: 'service',
+                          customer_name: 'Müşteri',
                         }),
                       })
+
+                      const result = await response.json()
+                      console.log('Waiter call response:', response.status, result)
+
                       if (response.ok) {
                         toast({
                           title: 'Garson Çağrıldı',
                           description: 'Garsonunuz en kısa sürede gelecektir.',
                         })
+                      } else {
+                        console.error('Waiter call failed:', result)
+                        toast({
+                          title: 'Hata',
+                          description: result.error || 'Çağrı gönderilemedi',
+                          variant: 'destructive',
+                        })
                       }
                     } catch (error) {
+                      console.error('Waiter call error:', error)
                       toast({
                         title: 'Hata',
                         description: 'Çağrı gönderilemedi',
@@ -670,10 +859,10 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
               </Button>
             </div>
           </div>
-        </header>
+        </header >
 
         {/* Search & Category Chips - REORDERED */}
-        <div className="sticky top-16 z-30 border-b bg-background/60 backdrop-blur">
+        < div className="sticky top-16 z-30 border-b bg-background/60 backdrop-blur" >
           <div className="container py-3 space-y-3">
             {/* Search Bar - NOW FIRST */}
             <div className="flex gap-2">
@@ -746,6 +935,20 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
 
             {/* Category Chips - NOW BELOW SEARCH */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {/* Waiter Call Button - DYNAMIC STATE */}
+              <Button
+                size="sm"
+                variant={activeCall ? (activeCall.status === 'acknowledged' ? "default" : "secondary") : "destructive"}
+                onClick={() => !activeCall && setShowWaiterCallDialog(true)}
+                disabled={!!activeCall}
+                className={`whitespace-nowrap flex items-center gap-1 ${activeCall?.status === 'acknowledged' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+              >
+                <Bell className={`h-4 w-4 ${activeCall ? 'animate-bounce' : ''}`} />
+                {activeCall
+                  ? (activeCall.status === 'acknowledged' ? 'Garson Geliyor!' : 'Çağrıldı...')
+                  : 'Garson Çağır'}
+              </Button>
+
               <Button
                 size="sm"
                 variant={selectedCategories.length === 0 ? "default" : "outline"}
@@ -773,7 +976,7 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
               ))}
             </div>
           </div>
-        </div>
+        </div >
 
         <main className="container py-6">
           {/* Campaigns */}
@@ -1072,24 +1275,75 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
           </DialogContent>
         </Dialog>
 
+        {/* Waiter Call Dialog */}
+        <Dialog open={showWaiterCallDialog} onOpenChange={setShowWaiterCallDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Garson Çağır</DialogTitle>
+              <DialogDescription>
+                Garsonunuzu çağırmak için lütfen isminizi girin.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="waiter-call-name">İsminiz</Label>
+                <Input
+                  id="waiter-call-name"
+                  value={waiterCallName}
+                  onChange={(e) => setWaiterCallName(e.target.value)}
+                  placeholder="Adınız"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleWaiterCall()
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowWaiterCallDialog(false)
+                    setWaiterCallName('')
+                  }}
+                >
+                  İptal
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleWaiterCall}
+                  disabled={!waiterCallName.trim()}
+                >
+                  Garson Çağır
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* AI Assistant */}
-        {showAI && (
-          <>
-            {/* Backdrop Blur */}
-            <div
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-              onClick={() => setShowAI(false)}
-            />
-            <AIAssistantChat
-              organization={organization}
-              sessionId={sessionId}
-              onClose={() => setShowAI(false)}
-              onAddToCart={(item) => addToCart(item)}
-              aiConfig={aiConfig}
-              products={allProducts}
-            />
-          </>
-        )}
+        {
+          showAI && (
+            <>
+              {/* Backdrop Blur */}
+              <div
+                className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+                onClick={() => setShowAI(false)}
+              />
+              <AIAssistantChat
+                organization={organization}
+                sessionId={sessionId}
+                onClose={() => setShowAI(false)}
+                onAddToCart={(item) => addToCart(item)}
+                aiConfig={aiConfig}
+                products={allProducts}
+              />
+            </>
+          )
+        }
 
         {/* Item Detail Dialog */}
         <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
@@ -1214,48 +1468,50 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
         </Dialog>
 
         {/* AI Assistant FAB */}
-        {aiConfig && (
-          <>
-            <Button
-              onClick={() => {
-                setShowAI(!showAI)
-                if (showAIWelcome) setShowAIWelcome(false)
-              }}
-              className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-40"
-              size="icon"
-            >
-              <MessageSquare className="h-6 w-6" />
-            </Button>
+        {
+          aiConfig && (
+            <>
+              <Button
+                onClick={() => {
+                  setShowAI(!showAI)
+                  if (showAIWelcome) setShowAIWelcome(false)
+                }}
+                className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-40"
+                size="icon"
+              >
+                <MessageSquare className="h-6 w-6" />
+              </Button>
 
-            {showAI && (
-              <div className="fixed bottom-24 right-6 w-96 max-w-[calc(100vw-3rem)] z-50">
-                {/* Placeholder for positioning if needed, but main chat is global */}
-              </div>
-            )}
-
-            {showAIWelcome && !showAI && (
-              <div className="fixed bottom-24 right-6 w-80 max-w-[calc(100vw-3rem)] bg-primary text-primary-foreground p-4 rounded-lg shadow-lg z-40 animate-in slide-in-from-right">
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Merhaba! 👋</p>
-                    <p className="text-xs mt-1 opacity-90">
-                      Size yardımcı olabilirim. Menümüz hakkında sorularınız varsa benimle sohbet edebilirsiniz!
-                    </p>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-primary-foreground hover:bg-primary-foreground/20"
-                    onClick={() => setShowAIWelcome(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+              {showAI && (
+                <div className="fixed bottom-24 right-6 w-96 max-w-[calc(100vw-3rem)] z-50">
+                  {/* Placeholder for positioning if needed, but main chat is global */}
                 </div>
-              </div>
-            )}
-          </>
-        )}
+              )}
+
+              {showAIWelcome && !showAI && (
+                <div className="fixed bottom-24 right-6 w-80 max-w-[calc(100vw-3rem)] bg-primary text-primary-foreground p-4 rounded-lg shadow-lg z-40 animate-in slide-in-from-right">
+                  <div className="flex items-start gap-3">
+                    <MessageSquare className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Merhaba! 👋</p>
+                      <p className="text-xs mt-1 opacity-90">
+                        Size yardımcı olabilirim. Menümüz hakkında sorularınız varsa benimle sohbet edebilirsiniz!
+                      </p>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-primary-foreground hover:bg-primary-foreground/20"
+                      onClick={() => setShowAIWelcome(false)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        }
 
         {/* Footer */}
         <footer className="border-t mt-12 bg-muted/30">
@@ -1456,7 +1712,7 @@ export default function RestaurantMenu({ organization, categories, campaigns, ta
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+      </div >
     </>
   )
 }

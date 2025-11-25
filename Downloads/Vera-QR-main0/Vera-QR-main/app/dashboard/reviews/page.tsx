@@ -1,23 +1,30 @@
-import { getRestaurantAdminInfo } from '@/lib/supabase/auth'
+import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ReviewsManagement from '@/components/restaurant/reviews-management'
-import PageHeader from '@/components/restaurant/page-header'
+import ReviewsDashboard from '@/components/restaurant/reviews-dashboard'
 
 export default async function ReviewsPage() {
-  const adminInfo = await getRestaurantAdminInfo()
-  
-  if (!adminInfo) {
-    redirect('/auth/login')
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Get user's organization
+  const { data: member } = await supabase
+    .from('restaurant_admins')
+    .select('restaurant_id')
+    .eq('profile_id', user.id)
+    .single()
+
+
+  if (!member) {
+    return <div className="p-8">Organizasyon bulunamadı.</div>
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        titleKey="pages.reviews.title"
-        descriptionKey="pages.reviews.description"
-      />
-
-      <ReviewsManagement restaurantId={adminInfo.restaurant_id} />
+    <div className="container py-8">
+      <ReviewsDashboard restaurantId={member.restaurant_id} />
     </div>
   )
 }

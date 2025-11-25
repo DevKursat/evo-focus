@@ -75,7 +75,7 @@ export async function createRestaurantWithAdmin(data: any) {
           if (found) {
             userId = found.id
           } else {
-             throw new Error('Kullanıcı zaten kayıtlı fakat profili bulunamadı ve erişilemiyor.')
+            throw new Error('Kullanıcı zaten kayıtlı fakat profili bulunamadı ve erişilemiyor.')
           }
         } else {
           throw error
@@ -114,9 +114,9 @@ export async function createRestaurantWithAdmin(data: any) {
       .single()
 
     if (restaurantError) {
-        // Cleanup user if restaurant fails? Ideally yes, but for MVP let's just error.
-        // await supabaseAdmin.auth.admin.deleteUser(userId)
-        throw new Error(`Restoran oluşturulamadı: ${restaurantError.message}`)
+      // Cleanup user if restaurant fails? Ideally yes, but for MVP let's just error.
+      // await supabaseAdmin.auth.admin.deleteUser(userId)
+      throw new Error(`Restoran oluşturulamadı: ${restaurantError.message}`)
     }
 
     // 4. Link Admin to Restaurant
@@ -131,8 +131,8 @@ export async function createRestaurantWithAdmin(data: any) {
       })
 
     if (linkError) {
-       console.error("Link Error:", linkError)
-       throw new Error(`Yönetici yetkisi verilemedi: ${linkError.message}`)
+      console.error("Link Error:", linkError)
+      throw new Error(`Yönetici yetkisi verilemedi: ${linkError.message}`)
     }
 
     // 4.5 Add Additional Admins if provided
@@ -145,10 +145,10 @@ export async function createRestaurantWithAdmin(data: any) {
         // Let's just use the same robust logic as addRestaurantAdmin but inline or helper.
         // ACTUALLY, we can just call addRestaurantAdmin! It is an async function in the same module.
         try {
-           await addRestaurantAdmin(restaurant.id, admin.email, admin.name)
+          await addRestaurantAdmin(restaurant.id, admin.email, admin.name)
         } catch (err) {
-           console.error(`Failed to add additional admin ${admin.email}:`, err)
-           // Don't fail the whole creation for this
+          console.error(`Failed to add additional admin ${admin.email}:`, err)
+          // Don't fail the whole creation for this
         }
       }
     }
@@ -165,22 +165,25 @@ export async function createRestaurantWithAdmin(data: any) {
 
     // 6. Create Default Categories
     if (data.categories && data.categories.length > 0) {
-        const categoryPromises = data.categories.map((name: string, index: number) =>
-            supabase.from('categories').insert({
-                restaurant_id: restaurant.id,
-                name_tr: name,
-                display_order: index,
-                visible: true
-            })
-        )
-        await Promise.all(categoryPromises)
+      const categoryPromises = data.categories.map((name: string, index: number) =>
+        supabase.from('categories').insert({
+          restaurant_id: restaurant.id,
+          name_tr: name,
+          display_order: index,
+          visible: true
+        })
+      )
+      await Promise.all(categoryPromises)
     }
 
     // 7. Create Default QR Codes (10 tables)
+    // 7. Create Default QR Codes - REMOVED per user request
+    // Automatic QR code generation is disabled. Admins should create them manually.
+    /*
     const crypto = require('crypto')
     const qrPromises = Array.from({ length: 10 }, (_, i) => {
         const tableNumber = `Masa ${i + 1}`
-        const hash = crypto.randomBytes(16).toString('hex') // Generate here for safety
+        const hash = crypto.randomBytes(16).toString('hex')
         return supabase.from('qr_codes').insert({
           restaurant_id: restaurant.id,
           table_number: tableNumber,
@@ -190,6 +193,7 @@ export async function createRestaurantWithAdmin(data: any) {
         })
     })
     await Promise.all(qrPromises)
+    */
 
     revalidatePath('/admin/restaurants')
     return { success: true, restaurantId: restaurant.id }
@@ -216,6 +220,7 @@ export async function updateRestaurant(id: string, data: any) {
       address: data.address,
       primary_color: data.brand_color,
       working_hours: data.working_hours,
+      logo_url: data.logo_url,
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
@@ -245,33 +250,38 @@ export async function updateRestaurant(id: string, data: any) {
 
 // Admin Management
 export async function getRestaurantAdmins(restaurantId: string) {
-  // Use supabaseAdmin (Service Role) to bypass RLS for the admin panel list
-  // This ensures the list is populated even if RLS policies are strict for the viewer
-  const { data, error } = await supabaseAdmin
+  // Use supabaseAdmin (Service Role) to bypass RLS
+
+  // 1. Get the links
+  const { data: links, error: linksError } = await supabaseAdmin
     .from('restaurant_admins')
-    .select(`
-      id,
-      profile_id,
-      created_at,
-      profiles:profiles (
-        id,
-        email,
-        full_name,
-        role,
-        created_at
-      )
-    `)
+    .select('id, profile_id, created_at')
     .eq('restaurant_id', restaurantId)
     .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Error fetching restaurant admins:', error)
-    throw new Error(error.message)
+  if (linksError) {
+    console.error('Error fetching restaurant admins links:', linksError)
+    throw new Error(linksError.message)
   }
 
-  return data.map(item => ({
-    link_id: item.id,
-    profile: item.profiles
+  if (!links || links.length === 0) return []
+
+  // 2. Get the profiles
+  const profileIds = links.map(link => link.profile_id)
+  const { data: profiles, error: profilesError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, full_name, role, created_at')
+    .in('id', profileIds)
+
+  if (profilesError) {
+    console.error('Error fetching admin profiles:', profilesError)
+    throw new Error(profilesError.message)
+  }
+
+  // 3. Merge data
+  return links.map(link => ({
+    link_id: link.id,
+    profile: profiles?.find(p => p.id === link.profile_id) || null
   }))
 }
 
@@ -290,12 +300,12 @@ export async function addRestaurantAdmin(restaurantId: string, email: string, na
     userId = existingProfile.id
     // Update info if needed
     if (password) {
-        await supabaseAdmin.auth.admin.updateUserById(userId, { password })
+      await supabaseAdmin.auth.admin.updateUserById(userId, { password })
     }
     // If adding as admin, maybe ensure they have role?
     // Actually, 'restaurant_admin' role is singular per system design usually, but let's assume we keep it.
     if (existingProfile.role !== 'platform_admin') {
-        await supabaseAdmin.from('profiles').update({ role: 'restaurant_admin' }).eq('id', userId)
+      await supabaseAdmin.from('profiles').update({ role: 'restaurant_admin' }).eq('id', userId)
     }
   } else {
     // Try Auth Users
@@ -303,26 +313,26 @@ export async function addRestaurantAdmin(restaurantId: string, email: string, na
     const found = users?.users.find(u => u.email === email)
 
     if (found) {
-        userId = found.id
+      userId = found.id
     } else {
-        // Create New User
-        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-            email,
-            password: password || 'tempPass123!', // Provide default or require password
-            email_confirm: true,
-            user_metadata: { full_name: name }
-        })
-        if (createError || !newUser.user) return { error: `Kullanıcı oluşturulamadı: ${createError?.message}` }
-        userId = newUser.user.id
+      // Create New User
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: password || 'tempPass123!', // Provide default or require password
+        email_confirm: true,
+        user_metadata: { full_name: name }
+      })
+      if (createError || !newUser.user) return { error: `Kullanıcı oluşturulamadı: ${createError?.message}` }
+      userId = newUser.user.id
     }
 
     // Ensure Profile
     const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
-        id: userId,
-        email,
-        full_name: name,
-        role: 'restaurant_admin',
-        is_active: true
+      id: userId,
+      email,
+      full_name: name,
+      role: 'restaurant_admin',
+      is_active: true
     })
     if (profileError) return { error: `Profil güncellenemedi: ${profileError.message}` }
   }
@@ -343,9 +353,9 @@ export async function addRestaurantAdmin(restaurantId: string, email: string, na
   const { error: linkError } = await supabaseAdmin
     .from('restaurant_admins')
     .insert({
-        restaurant_id: restaurantId,
-        profile_id: userId,
-        permissions: ['all']
+      restaurant_id: restaurantId,
+      profile_id: userId,
+      permissions: ['all']
     })
 
   if (linkError) return { error: `Bağlantı oluşturulamadı: ${linkError.message}` }
@@ -355,18 +365,18 @@ export async function addRestaurantAdmin(restaurantId: string, email: string, na
 }
 
 export async function removeRestaurantAdmin(restaurantId: string, profileId: string) {
-    const { error } = await supabaseAdmin
-        .from('restaurant_admins')
-        .delete()
-        .eq('restaurant_id', restaurantId)
-        .eq('profile_id', profileId)
+  const { error } = await supabaseAdmin
+    .from('restaurant_admins')
+    .delete()
+    .eq('restaurant_id', restaurantId)
+    .eq('profile_id', profileId)
 
-    if (error) {
-        return { error: error.message }
-    }
+  if (error) {
+    return { error: error.message }
+  }
 
-    revalidatePath(`/admin/restaurants/${restaurantId}/edit`)
-    return { success: true }
+  revalidatePath(`/admin/restaurants/${restaurantId}/edit`)
+  return { success: true }
 }
 
 export async function createQRCode(restaurantId: string, formData: FormData) {
@@ -398,21 +408,37 @@ export async function createQRCode(restaurantId: string, formData: FormData) {
 }
 
 export async function checkRestaurantSlug(slug: string, excludeId?: string) {
-    // Use supabaseAdmin to bypass RLS for global checking
-    let query = supabaseAdmin
-        .from('restaurants')
-        .select('id')
-        .eq('slug', slug)
+  // Use supabaseAdmin to bypass RLS for global checking
+  let query = supabaseAdmin
+    .from('restaurants')
+    .select('id')
+    .eq('slug', slug)
 
-    if (excludeId) {
-        query = query.neq('id', excludeId)
-    }
+  if (excludeId) {
+    query = query.neq('id', excludeId)
+  }
 
-    const { data, error } = await query.maybeSingle()
+  const { data, error } = await query.maybeSingle()
 
-    if (error) {
-        return { error: error.message }
-    }
+  if (error) {
+    return { error: error.message }
+  }
 
-    return { isAvailable: !data }
+  return { isAvailable: !data }
+}
+
+export async function deleteQRCodes(ids: string[]) {
+  const supabase = createClient()
+
+  const { error } = await supabase
+    .from('qr_codes')
+    .delete()
+    .in('id', ids)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  revalidatePath('/admin/restaurants/[id]/qr')
+  return { success: true }
 }

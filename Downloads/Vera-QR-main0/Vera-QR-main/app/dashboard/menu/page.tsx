@@ -1,30 +1,33 @@
-import { createClient } from '@/lib/supabase/server'
 import { getRestaurantAdminInfo } from '@/lib/supabase/auth'
+import { createClient } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
 import MenuCategoriesList from '@/components/restaurant/menu-categories-list'
 
-export default async function MenuPage() {
-  const supabase = createClient()
-  const adminInfo = await getRestaurantAdminInfo()
+export const dynamic = 'force-dynamic'
 
-  const [
-    { data: categories },
-    { data: items },
-  ] = await Promise.all([
-    supabase
-      .from('categories')
-      .select('*')
-      .eq('restaurant_id', adminInfo?.restaurant_id)
-      .order('display_order', { ascending: true }),
-    supabase
-      .from('products')
-      .select('*')
-      .eq('restaurant_id', adminInfo?.restaurant_id)
-      .order('display_order', { ascending: true }),
-  ])
+export default async function MenuPage() {
+  // Use Service Role to bypass RLS for admin dashboard
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const adminInfo = await getRestaurantAdminInfo()
+  if (!adminInfo) return <div>Erişim reddedildi</div>
+
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('restaurant_id', adminInfo.restaurant_id)
+    .order('display_order', { ascending: true })
+
+  const { data: products } = await supabase
+    .from('products')
+    .select('*')
+    .eq('restaurant_id', adminInfo.restaurant_id)
+    .order('created_at', { ascending: false })
 
   return (
     <div className="space-y-6">
@@ -51,9 +54,9 @@ export default async function MenuPage() {
         </div>
       </div>
 
-      <MenuCategoriesList 
-        categories={categories || []} 
-        items={items || []}
+      <MenuCategoriesList
+        categories={categories || []}
+        items={products || []}
       />
     </div>
   )

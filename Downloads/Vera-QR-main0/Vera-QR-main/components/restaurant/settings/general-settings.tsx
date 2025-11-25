@@ -218,7 +218,7 @@ export default function GeneralSettings({ restaurantId }: Props) {
                   }
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Menü URL'i: {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/{formData.slug || 'slug'}
+                  Menü URL&apos;i: {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/{formData.slug || 'slug'}
                 </p>
                 {slugAvailable === true && (
                   <p className="text-xs text-green-600 mt-1">✓ Slug kullanılabilir</p>

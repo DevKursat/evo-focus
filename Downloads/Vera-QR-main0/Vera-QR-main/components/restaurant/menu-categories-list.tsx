@@ -246,6 +246,75 @@ export default function MenuCategoriesList({ categories, items }: Props) {
         })
       )}
 
+      {/* Uncategorized Items Section */}
+      {items.filter(item => !item.category_id || !categories.find(c => c.id === item.category_id)).length > 0 && (
+        <Card className="border-dashed border-slate-300 bg-slate-50 dark:bg-slate-900 dark:border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-lg text-slate-600 dark:text-slate-400">Kategorisiz Ürünler</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {items.filter(item => !item.category_id || !categories.find(c => c.id === item.category_id)).map((item) => (
+                <div
+                  key={item.id}
+                  className="border rounded-lg p-4 bg-white dark:bg-slate-800 hover:border-blue-500 transition-colors dark:border-gray-600"
+                >
+                  {item.image_url && (
+                    <div className="relative w-full h-32 mb-3 rounded-lg overflow-hidden">
+                      <Image
+                        src={item.image_url}
+                        alt={getName(item)}
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between mb-2">
+                    <h4 className="font-semibold dark:text-white">{getName(item)}</h4>
+                    <Badge
+                      variant={item.is_available ? 'default' : 'destructive'}
+                    >
+                      {item.is_available ? (
+                        <Eye className="h-3 w-3" />
+                      ) : (
+                        <EyeOff className="h-3 w-3" />
+                      )}
+                    </Badge>
+                  </div>
+                  {getDescription(item) && (
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">
+                      {getDescription(item)}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                      ₺{item.price.toFixed(2)}
+                    </span>
+                    <div className="flex gap-1">
+                      <Link href={`/dashboard/menu/items/${item.id}/edit`}>
+                        <Button variant="outline" size="sm" className="dark:border-gray-600 dark:text-slate-200">
+                          <Edit className="h-3 w-3 mr-1" />
+                          {t.common.edit}
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="dark:border-gray-600 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                        onClick={() => handleDeleteClick(item.id, 'item', getName(item))}
+                      >
+                        <Trash className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )
+      }
+
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
